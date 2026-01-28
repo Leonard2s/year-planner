@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import type { ExpenseItem } from '../types'
 
 const props = defineProps<{
@@ -14,10 +14,6 @@ const emit = defineEmits<{
 
 const newItemName = ref('')
 const newItemCost = ref<number>(0)
-
-const totalExpenses = computed(() => {
-  return props.expenses.reduce((sum, item) => sum + item.cost, 0)
-})
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2)
