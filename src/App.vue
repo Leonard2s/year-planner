@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useYearPlan } from './composables/useYearPlan'
+import { useFinances } from './composables/useFinances'
 import YearOverview from './components/YearOverview.vue'
 import MonthCard from './components/MonthCard.vue'
 import GoalForm from './components/GoalForm.vue'
@@ -11,7 +12,13 @@ import GoalDetailModal from './components/GoalDetailModal.vue'
 import GoalEditModal from './components/GoalEditModal.vue'
 import MobileMonthSelector from './components/MobileMonthSelector.vue'
 import ImportExportModal from './components/ImportExportModal.vue'
-import type { Goal, YearPlan } from './types'
+import FinancialDashboard from './components/FinancialDashboard.vue'
+import TransactionForm from './components/TransactionForm.vue'
+import TransactionList from './components/TransactionList.vue'
+import type { Goal, YearPlan, Transaction } from './types'
+
+// App mode: 'metas' or 'finanzas'
+const appMode = ref<'metas' | 'finanzas'>('finanzas')
 
 const {
   yearPlan,
@@ -23,15 +30,35 @@ const {
   deleteGoal,
   closeMonth,
   reopenMonth,
-  resetYear,
   getMonthlySavingsTotal
 } = useYearPlan()
+
+// Finance Manager
+const {
+  selectedMonth: financeSelectedMonth,
+  accounts,
+  monthlyTransactions,
+  monthlyIncome,
+  monthlyExpenses,
+  monthlyBalance,
+  totalBalance,
+  savingsRate,
+  expensesByCategory,
+  incomeByCategory,
+  yearlyIncome,
+  yearlyExpenses,
+  addTransaction,
+  updateTransaction,
+  deleteTransaction
+} = useFinances()
+
+const showTransactionForm = ref(false)
+const editingTransaction = ref<Transaction | null>(null)
 
 const showSavingsForm = ref(false)
 const showTravelForm = ref(false)
 const showPurchaseForm = ref(false)
 const showDistributedForm = ref(false)
-const showResetConfirm = ref(false)
 const showDetailModal = ref(false)
 const showEditModal = ref(false)
 const showImportExportModal = ref(false)
@@ -127,20 +154,33 @@ function handleReopenMonth() {
   reopenMonth(selectedMonthId.value)
 }
 
-function handleReset() {
-  if (showResetConfirm.value) {
-    resetYear()
-    showResetConfirm.value = false
-  } else {
-    showResetConfirm.value = true
-    setTimeout(() => {
-      showResetConfirm.value = false
-    }, 3000)
-  }
-}
-
 function handleImportData(importedPlan: YearPlan) {
   yearPlan.value = importedPlan
+}
+
+// Finance handlers
+function handleAddTransaction(data: Omit<Transaction, 'id' | 'createdAt'>) {
+  if (editingTransaction.value) {
+    updateTransaction(editingTransaction.value.id, data)
+    editingTransaction.value = null
+  } else {
+    addTransaction(data)
+  }
+  showTransactionForm.value = false
+}
+
+function handleEditTransaction(transaction: Transaction) {
+  editingTransaction.value = transaction
+  showTransactionForm.value = true
+}
+
+function handleDeleteTransaction(id: string) {
+  deleteTransaction(id)
+}
+
+function openTransactionForm() {
+  editingTransaction.value = null
+  showTransactionForm.value = true
 }
 </script>
 
@@ -150,93 +190,146 @@ function handleImportData(importedPlan: YearPlan) {
       <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
         <div class="flex items-center justify-between gap-2">
           <div class="flex-1 min-w-0">
-            <h1 class="text-lg sm:text-2xl font-bold text-gray-900 truncate">📊 Planificador Anual</h1>
-            <p class="text-xs sm:text-sm text-gray-500">Seguimiento de metas {{ yearPlan.year }}</p>
+            <h1 class="text-lg sm:text-2xl font-bold text-gray-900 truncate">
+              {{ appMode === 'finanzas' ? '� Finanzas Personales' : '� Planificador de Metas' }}
+            </h1>
+            <p class="text-xs sm:text-sm text-gray-500">{{ yearPlan.year }}</p>
           </div>
           <div class="flex items-center gap-2">
             <button
               @click="showImportExportModal = true"
               class="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-colors whitespace-nowrap flex-shrink-0"
             >
-              📦 <span class="hidden sm:inline">Datos</span>
-            </button>
-            <button
-              @click="handleReset"
-              class="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
-              :class="showResetConfirm 
-                ? 'bg-red-600 text-white hover:bg-red-700' 
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'"
-            >
-              {{ showResetConfirm ? '⚠️ Confirmar' : 'Reiniciar' }}
+              📦
             </button>
           </div>
+        </div>
+        
+        <!-- App Mode Tabs -->
+        <div class="flex gap-2 mt-3 p-1 bg-gray-100 rounded-xl">
+          <button
+            @click="appMode = 'finanzas'"
+            class="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all"
+            :class="appMode === 'finanzas' 
+              ? 'bg-white text-indigo-700 shadow-sm' 
+              : 'text-gray-500 hover:text-gray-700'"
+          >
+            💰 Finanzas
+          </button>
+          <button
+            @click="appMode = 'metas'"
+            class="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all"
+            :class="appMode === 'metas' 
+              ? 'bg-white text-indigo-700 shadow-sm' 
+              : 'text-gray-500 hover:text-gray-700'"
+          >
+            🎯 Metas
+          </button>
         </div>
       </div>
     </header>
 
-    <!-- Mobile Month Selector - sticky below header -->
+    <!-- Mobile Month Selector - only show in goals mode -->
     <MobileMonthSelector
+      v-if="appMode === 'metas'"
       :year-plan="yearPlan"
       :selected-month-id="selectedMonthId"
       @select-month="handleSelectMonth"
     />
 
     <main class="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-      <!-- Mobile Year Stats - compact summary -->
-      <div class="sm:hidden mb-4">
-        <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-4 text-white">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-sm font-medium opacity-90">Progreso Anual {{ yearPlan.year }}</span>
-            <span class="text-lg font-bold">{{ yearStats.percentage }}%</span>
-          </div>
-          <div class="w-full h-2 bg-white/20 rounded-full overflow-hidden">
-            <div 
-              class="h-full bg-white rounded-full transition-all duration-500"
-              :style="{ width: `${yearStats.percentage}%` }"
-            ></div>
-          </div>
-          <div class="flex justify-between mt-2 text-xs opacity-80">
-            <span>{{ yearStats.completed }} completadas</span>
-            <span>{{ yearStats.total }} totales</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Year Overview - hidden on mobile, visible on tablet+ -->
-      <div class="hidden sm:block">
-        <YearOverview 
-          :year-plan="yearPlan" 
-          @select-month="handleSelectMonth" 
+      <!-- ============ FINANCE MODE ============ -->
+      <template v-if="appMode === 'finanzas'">
+        <FinancialDashboard
+          :selected-month="financeSelectedMonth"
+          :monthly-income="monthlyIncome"
+          :monthly-expenses="monthlyExpenses"
+          :monthly-balance="monthlyBalance"
+          :total-balance="totalBalance"
+          :savings-rate="savingsRate"
+          :expenses-by-category="expensesByCategory"
+          :income-by-category="incomeByCategory"
+          :yearly-income="yearlyIncome"
+          :yearly-expenses="yearlyExpenses"
+          @add-transaction="openTransactionForm"
         />
-      </div>
-
-      <div v-if="selectedMonth" class="space-y-3 sm:space-y-4">
-        <div class="bg-white rounded-2xl shadow-sm p-4 border-l-4 border-green-500">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div class="flex-1">
-              <h3 class="text-sm sm:text-base font-semibold text-gray-700">💰 Total Ahorrado en {{ selectedMonth.name }}</h3>
-              <p class="text-xl sm:text-2xl font-bold text-green-700">${{ monthlySavingsTotal.toLocaleString('es-MX') }}</p>
-            </div>
+        
+        <div class="mt-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-gray-800">📋 Transacciones Recientes</h2>
             <button
-              @click="showDistributedForm = true"
-              class="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
+              @click="openTransactionForm"
+              class="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-sm font-semibold rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all"
             >
-              📊 Meta Distribuida
+              ➕ Nueva
             </button>
           </div>
+          <TransactionList
+            :transactions="monthlyTransactions"
+            @edit="handleEditTransaction"
+            @delete="handleDeleteTransaction"
+          />
+        </div>
+      </template>
+
+      <!-- ============ GOALS MODE ============ -->
+      <template v-else>
+        <!-- Mobile Year Stats - compact summary -->
+        <div class="sm:hidden mb-4">
+          <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-4 text-white">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-sm font-medium opacity-90">Progreso Anual {{ yearPlan.year }}</span>
+              <span class="text-lg font-bold">{{ yearStats.percentage }}%</span>
+            </div>
+            <div class="w-full h-2 bg-white/20 rounded-full overflow-hidden">
+              <div 
+                class="h-full bg-white rounded-full transition-all duration-500"
+                :style="{ width: `${yearStats.percentage}%` }"
+              ></div>
+            </div>
+            <div class="flex justify-between mt-2 text-xs opacity-80">
+              <span>{{ yearStats.completed }} completadas</span>
+              <span>{{ yearStats.total }} totales</span>
+            </div>
+          </div>
         </div>
 
-        <MonthCard
-          :month="selectedMonth"
-          :is-last="isLastMonth"
-          @add-goal="handleShowForm"
-          @update-goal="handleUpdateGoal"
-          @delete-goal="handleDeleteGoal"
-          @close-month="handleCloseMonth"
-          @reopen-month="handleReopenMonth"
-          @show-detail="handleShowDetail"
-        />
-      </div>
+        <!-- Year Overview - hidden on mobile, visible on tablet+ -->
+        <div class="hidden sm:block">
+          <YearOverview 
+            :year-plan="yearPlan" 
+            @select-month="handleSelectMonth" 
+          />
+        </div>
+
+        <div v-if="selectedMonth" class="space-y-3 sm:space-y-4">
+          <div class="bg-white rounded-2xl shadow-sm p-4 border-l-4 border-green-500">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div class="flex-1">
+                <h3 class="text-sm sm:text-base font-semibold text-gray-700">💰 Total Ahorrado en {{ selectedMonth.name }}</h3>
+                <p class="text-xl sm:text-2xl font-bold text-green-700">${{ monthlySavingsTotal.toLocaleString('es-MX') }}</p>
+              </div>
+              <button
+                @click="showDistributedForm = true"
+                class="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                📊 Meta Distribuida
+              </button>
+            </div>
+          </div>
+
+          <MonthCard
+            :month="selectedMonth"
+            :is-last="isLastMonth"
+            @add-goal="handleShowForm"
+            @update-goal="handleUpdateGoal"
+            @delete-goal="handleDeleteGoal"
+            @close-month="handleCloseMonth"
+            @reopen-month="handleReopenMonth"
+            @show-detail="handleShowDetail"
+          />
+        </div>
+      </template>
     </main>
 
     <div 
@@ -320,6 +413,19 @@ function handleImportData(importedPlan: YearPlan) {
         :selected-month-id="selectedMonthId"
         @close="showImportExportModal = false"
         @import="handleImportData"
+      />
+    </div>
+
+    <div 
+      v-if="showTransactionForm" 
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      @click.self="showTransactionForm = false; editingTransaction = null"
+    >
+      <TransactionForm
+        :accounts="accounts"
+        :edit-transaction="editingTransaction"
+        @submit="handleAddTransaction"
+        @close="showTransactionForm = false; editingTransaction = null"
       />
     </div>
 
