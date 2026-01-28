@@ -10,7 +10,8 @@ import DistributedGoalForm from './components/DistributedGoalForm.vue'
 import GoalDetailModal from './components/GoalDetailModal.vue'
 import GoalEditModal from './components/GoalEditModal.vue'
 import MobileMonthSelector from './components/MobileMonthSelector.vue'
-import type { Goal } from './types'
+import ImportExportModal from './components/ImportExportModal.vue'
+import type { Goal, YearPlan } from './types'
 
 const {
   yearPlan,
@@ -33,6 +34,7 @@ const showDistributedForm = ref(false)
 const showResetConfirm = ref(false)
 const showDetailModal = ref(false)
 const showEditModal = ref(false)
+const showImportExportModal = ref(false)
 const selectedGoalForDetail = ref<Goal | null>(null)
 
 const isLastMonth = computed(() => selectedMonthId.value === 12)
@@ -136,6 +138,10 @@ function handleReset() {
     }, 3000)
   }
 }
+
+function handleImportData(importedPlan: YearPlan) {
+  yearPlan.value = importedPlan
+}
 </script>
 
 <template>
@@ -147,15 +153,23 @@ function handleReset() {
             <h1 class="text-lg sm:text-2xl font-bold text-gray-900 truncate">📊 Planificador Anual</h1>
             <p class="text-xs sm:text-sm text-gray-500">Seguimiento de metas {{ yearPlan.year }}</p>
           </div>
-          <button
-            @click="handleReset"
-            class="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
-            :class="showResetConfirm 
-              ? 'bg-red-600 text-white hover:bg-red-700' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'"
-          >
-            {{ showResetConfirm ? '⚠️ Confirmar' : 'Reiniciar' }}
-          </button>
+          <div class="flex items-center gap-2">
+            <button
+              @click="showImportExportModal = true"
+              class="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-colors whitespace-nowrap flex-shrink-0"
+            >
+              📦 <span class="hidden sm:inline">Datos</span>
+            </button>
+            <button
+              @click="handleReset"
+              class="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
+              :class="showResetConfirm 
+                ? 'bg-red-600 text-white hover:bg-red-700' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'"
+            >
+              {{ showResetConfirm ? '⚠️ Confirmar' : 'Reiniciar' }}
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -293,6 +307,19 @@ function handleReset() {
         :goal="selectedGoalForDetail"
         @close="showEditModal = false"
         @save="handleSaveGoal"
+      />
+    </div>
+
+    <div 
+      v-if="showImportExportModal" 
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      @click.self="showImportExportModal = false"
+    >
+      <ImportExportModal
+        :year-plan="yearPlan"
+        :selected-month-id="selectedMonthId"
+        @close="showImportExportModal = false"
+        @import="handleImportData"
       />
     </div>
 

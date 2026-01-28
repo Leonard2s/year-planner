@@ -73,18 +73,56 @@ export function calculateMonthSummary(month: Month): MonthSummary {
 
 export function useYearPlan() {
   const currentYear = new Date().getFullYear()
-  const yearPlan = ref<YearPlan>(createEmptyYear(currentYear))
   const selectedMonthId = ref<number>(new Date().getMonth() + 1)
   const isLoading = ref(true)
-
-  loadFromStorage(currentYear).then(data => {
-    if (data) {
-      yearPlan.value = data
+  const isInitialized = ref(false)
+  
+  // Load from localStorage first (synchronous) for immediate data
+  const localStorageKey = `year-planner-${currentYear}`
+  let initialData: YearPlan = createEmptyYear(currentYear)
+  
+  try {
+    const stored = localStorage.getItem(localStorageKey)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (parsed && parsed.year === currentYear) {
+        initialData = parsed
+      }
     }
-    isLoading.value = false
+  } catch (e) {
+    console.error('Error loading from localStorage:', e)
+  }
+  
+  const yearPlan = ref<YearPlan>(initialData)
+  isInitialized.value = true
+  isLoading.value = false
+
+  // Also try to load from IndexedDB (async) and merge if newer
+  loadFromStorage(currentYear).then(data => {
+    if (data && data.year === currentYear) {
+      // Only use IndexedDB data if it has more goals (more up to date)
+      const indexedDBGoals = data.months.flatMap(m => m.goals).length
+      const currentGoals = yearPlan.value.months.flatMap(m => m.goals).length
+      if (indexedDBGoals > currentGoals) {
+        yearPlan.value = data
+      }
+    }
+  }).catch(e => {
+    console.error('IndexedDB load failed:', e)
   })
 
+  // Watch for changes and save to both storages
   watch(yearPlan, (newValue) => {
+    if (!isInitialized.value) return
+    
+    // Always save to localStorage (synchronous, reliable)
+    try {
+      localStorage.setItem(localStorageKey, JSON.stringify(newValue))
+    } catch (e) {
+      console.error('Error saving to localStorage:', e)
+    }
+    
+    // Also save to IndexedDB (async)
     saveToStorage(newValue)
   }, { deep: true })
 
